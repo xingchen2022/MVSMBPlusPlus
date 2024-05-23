@@ -42,11 +42,12 @@ class StageNet(nn.Module):
             args['transformer_config'][stage_idx]['base_channel'] = in_channels
             self.cost_reg = PureTransformerCostReg(in_channels, **args['transformer_config'][stage_idx])
         else:
-            model_th = args.get('model_th', 8)
-            if ndepth <= model_th:  # do not downsample in depth range
-                self.cost_reg = CostRegNet3D(in_channels, in_channels)
-            else:
-                self.cost_reg = CostRegNet(in_channels, in_channels)
+            self.cost_reg = Reg2d(in_channels, 8)
+            # model_th = args.get('model_th', 8)
+            # if ndepth <= model_th:  # do not downsample in depth range
+            #     self.cost_reg = CostRegNet3D(in_channels, in_channels)
+            # else:
+            #     self.cost_reg = CostRegNet(in_channels, in_channels)
 
     def forward(self, features, proj_matrices, depth_values, tmp, position3d=None):
         ref_feat = features[:, 0]
@@ -101,7 +102,6 @@ class StageNet(nn.Module):
             volume_mean = volume_sum / (vis_sum.unsqueeze(1) + 1e-6)  # volume_sum / (num_views - 1)
 
         cost_reg = self.cost_reg(volume_mean, position3d)
-
         prob_volume_pre = cost_reg.squeeze(1)
         prob_volume = F.softmax(prob_volume_pre, dim=1)
 
@@ -116,16 +116,16 @@ class StageNet(nn.Module):
             # conf
             photometric_confidence = prob_volume.max(1)[0]  # [B,H,W]
 
-        else:
-            depth = depth_regression(prob_volume, depth_values=depth_values)
-            if self.ndepth >= 32:
-                photometric_confidence = conf_regression(prob_volume, n=4)
-            elif self.ndepth == 16:
-                photometric_confidence = conf_regression(prob_volume, n=3)
-            elif self.ndepth == 8:
-                photometric_confidence = conf_regression(prob_volume, n=2)
-            else:  # D == 4
-                photometric_confidence = prob_volume.max(1)[0]  # [B,H,W]
+        # else:
+        #     depth = depth_regression(prob_volume, depth_values=depth_values)
+        #     if self.ndepth >= 32:
+        #         photometric_confidence = conf_regression(prob_volume, n=4)
+        #     # elif self.ndepth == 16:
+        #     #     photometric_confidence = conf_regression(prob_volume, n=3)
+        #     # elif self.ndepth == 8:
+        #     #     photometric_confidence = conf_regression(prob_volume, n=2)
+        #     else:  # D == 4
+        #         photometric_confidence = prob_volume.max(1)[0]  # [B,H,W]
 
         outputs = {'depth': depth, 'prob_volume': prob_volume, "photometric_confidence": photometric_confidence.detach(),
                    'depth_values': depth_values, 'prob_volume_pre': prob_volume_pre}

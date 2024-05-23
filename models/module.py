@@ -505,6 +505,57 @@ class CostRegNet3D(nn.Module):
 
         return x
 
+class ConvBnReLU3D(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, pad=1):
+        super(ConvBnReLU3D, self).__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size, stride=stride, padding=pad, bias=False)
+        self.bn = nn.BatchNorm3d(out_channels)
+
+    def forward(self, x):
+        return F.relu(self.bn(self.conv(x)), inplace=True)
+
+class Reg2d(nn.Module):
+    def __init__(self, input_channel=128, base_channel=32):
+        super(Reg2d, self).__init__()
+
+        self.conv0 = ConvBnReLU3D(input_channel, base_channel, kernel_size=(1, 3, 3), pad=(0, 1, 1))
+        self.conv1 = ConvBnReLU3D(base_channel, base_channel * 2, kernel_size=(1, 3, 3), stride=(1, 2, 2),pad=(0, 1, 1))
+        self.conv2 = ConvBnReLU3D(base_channel * 2, base_channel * 2)
+
+        self.conv3 = ConvBnReLU3D(base_channel * 2, base_channel * 4, kernel_size=(1, 3, 3), stride=(1, 2, 2),pad=(0, 1, 1))
+        self.conv4 = ConvBnReLU3D(base_channel * 4, base_channel * 4)
+
+        self.conv5 = ConvBnReLU3D(base_channel * 4, base_channel * 8, kernel_size=(1, 3, 3), stride=(1, 2, 2),pad=(0, 1, 1))
+        self.conv6 = ConvBnReLU3D(base_channel * 8, base_channel * 8)
+
+        self.conv7 = nn.Sequential(
+            nn.ConvTranspose3d(base_channel * 8, base_channel * 4, kernel_size=(1, 3, 3), padding=(0, 1, 1),output_padding=(0, 1, 1), stride=(1, 2, 2), bias=False),
+            nn.BatchNorm3d(base_channel * 4),
+            nn.ReLU(inplace=True))
+
+        self.conv9 = nn.Sequential(
+            nn.ConvTranspose3d(base_channel * 4, base_channel * 2, kernel_size=(1, 3, 3), padding=(0, 1, 1),output_padding=(0, 1, 1), stride=(1, 2, 2), bias=False),
+            nn.BatchNorm3d(base_channel * 2),
+            nn.ReLU(inplace=True))
+
+        self.conv11 = nn.Sequential(
+            nn.ConvTranspose3d(base_channel * 2, base_channel, kernel_size=(1, 3, 3), padding=(0, 1, 1),output_padding=(0, 1, 1), stride=(1, 2, 2), bias=False),
+            nn.BatchNorm3d(base_channel),
+            nn.ReLU(inplace=True))
+
+        self.prob = nn.Conv3d(8, 1, 1, stride=1, padding=0)
+
+    def forward(self, x, *kwargs):
+        conv0 = self.conv0(x)
+        conv2 = self.conv2(self.conv1(conv0))
+        conv4 = self.conv4(self.conv3(conv2))
+        x = self.conv6(self.conv5(conv4))
+        x = conv4 + self.conv7(x)
+        x = conv2 + self.conv9(x)
+        x = conv0 + self.conv11(x)
+        x = self.prob(x)
+
+        return x
 
 class FFN(nn.Module):
     def __init__(
@@ -706,8 +757,10 @@ def init_inverse_range(cur_depth, ndepths, device, dtype, H, W):
     return 1. / inverse_depth_hypo
 
 
-def schedule_inverse_range(depth, depth_hypo, ndepths, split_itv, H, W):
-    last_depth_itv = 1. / depth_hypo[:, 2, :, :] - 1. / depth_hypo[:, 1, :, :]
+def schedule_inverse_range(depth, depth_hypo, ndepths, split_itv, H, W, last_depth_itv=None):
+    split_itv = 0.5
+    if last_depth_itv is None:
+        last_depth_itv = 1. / depth_hypo[:, 2, :, :] - 1. / depth_hypo[:, 1, :, :]
     inverse_min_depth = 1 / depth + split_itv * last_depth_itv  # B H W
     inverse_max_depth = 1 / depth - split_itv * last_depth_itv  # B H W
     # cur_depth_min, (B, H, W)

@@ -143,6 +143,14 @@ class Trainer(BaseTrainer):
                         total_loss_dict[key] = total_loss_dict[key] + loss_dict[key] / iters_to_accumulate
                     total_loss += loss
 
+                    depth_gt = depth_gt_ms["stage{}".format(num_stage)]
+                    mask = mask_ms["stage{}".format(num_stage)]
+                    depth_est = outputs["refined_depth"].detach()
+                    di = depth_interval[0].item() / 2.65
+                    scalar_outputs = {"abs_error": AbsDepthError_metrics(depth_est, depth_gt, mask > 0.5),
+                                      "thres2mm_error": Thres_metrics(depth_est, depth_gt, mask > 0.5, di * 2)}
+                    scalar_outputs = tensor2float(scalar_outputs)
+
                     if self.fp16:
                         self.scaler.scale(loss * self.loss_downscale).backward()
                     else:
@@ -201,7 +209,8 @@ class Trainer(BaseTrainer):
                     desc = f"Epoch: {epoch}/{self.epochs}. " \
                            f"Train. " \
                            f"Scale:({imgs.shape[-2]}x{imgs.shape[-1]}), " \
-                           f"Loss: {'%.2f' % total_loss.item()}"
+                           f"Loss: {'%.2f' % total_loss.item()}, " \
+                           f"2mm/abs: {'%.2f' % scalar_outputs['thres2mm_error']}/{'%.2f' % scalar_outputs['abs_error']}"
                     # FIXME:Temp codes
                     if "stage4_uncertainty" in loss_dict:
                         desc += f", VarLoss: {'%.2f' % loss_dict['stage4_uncertainty'].item()}"

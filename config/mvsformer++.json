@@ -1,7 +1,7 @@
 {
     "name": "DINOv2",
     "n_gpu": 1,
-    "fp16": true,
+    "fp16": false,
     "arch": {
         "bf16": false,
         "finetune": false,
@@ -24,7 +24,7 @@
                 8
             ],
             "ndepths": [
-                8,
+                32,
                 8,
                 4,
                 4
@@ -139,7 +139,7 @@
                 "mode": "train",
                 "nviews": 5,
                 "num_depths": 192,
-                "multi_scale": true,
+                "multi_scale": false,
                 "multi_scale_args": {
                     "scales": [
                         [512, 640], [512, 704],[512, 768],
@@ -170,10 +170,10 @@
                 },
                 "interval_scale": 1.06,
                 "resize_scale": 1.0,
-                "height": 1152,
-                "width": 1536,
+                "height": 512,
+                "width": 640,
                 "shuffle": true,
-                "batch_size": 1,
+                "batch_size": 2,
                 "random_crop": true,
                 "consist_crop": false,
                 "num_workers": 4,

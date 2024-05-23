@@ -128,17 +128,25 @@ class DINOv2MVSNet(nn.Module):
             proj_matrices_stage = proj_matrices["stage{}".format(stage_idx + 1)]  # [B,V,2,4,4]
             features_stage = features['stage{}'.format(stage_idx + 1)]
             B, V, C, H, W = features_stage.shape
+
             # init range
             if stage_idx == 0:
                 if self.inverse_depth:
-                    depth_samples = init_inverse_range(depth_values, self.ndepths[stage_idx], imgs.device, imgs.dtype,
-                                                       H, W)
+                    depth_samples = init_inverse_range(depth_values, self.ndepths[stage_idx], imgs.device, imgs.dtype, H, W)
+                    depth_samples_8 = init_inverse_range(depth_values, 8, imgs.device, imgs.dtype, H, W)
+                    last_depth_itv = 1. / depth_samples_8[:, 2, :, :] - 1. / depth_samples_8[:, 1, :, :]
                 else:
                     depth_samples = init_inverse_range(depth_values, self.ndepths[stage_idx], imgs.device,
                                                              imgs.dtype, H, W)
             else:
                 if self.inverse_depth:
-                    depth_samples = schedule_inverse_range(outputs_stage['depth'].detach(),
+                    if stage_idx==1:
+                        depth_samples = schedule_inverse_range(outputs_stage['depth'].detach(),
+                                                               outputs_stage['depth_values'],
+                                                               self.ndepths[stage_idx],
+                                                               self.depth_interals_ratio[stage_idx], H, W, last_depth_itv)  # B D H W
+                    else:
+                        depth_samples = schedule_inverse_range(outputs_stage['depth'].detach(),
                                                                outputs_stage['depth_values'],
                                                                self.ndepths[stage_idx],
                                                                self.depth_interals_ratio[stage_idx], H, W)  # B D H W
@@ -165,15 +173,15 @@ class DINOv2MVSNet(nn.Module):
                                                             tmp=tmp[stage_idx], position3d=position3d)
             outputs["stage{}".format(stage_idx + 1)] = outputs_stage
             depth_conf = outputs_stage['photometric_confidence']
-            if depth_conf.shape[1] != prob_maps.shape[1] or depth_conf.shape[2] != prob_maps.shape[2]:
-                depth_conf = F.interpolate(depth_conf.unsqueeze(1), [prob_maps.shape[1], prob_maps.shape[2]],
-                                           mode="nearest").squeeze(1)
-            prob_maps += depth_conf
-            valid_count += 1
+            # if depth_conf.shape[1] != prob_maps.shape[1] or depth_conf.shape[2] != prob_maps.shape[2]:
+            #     depth_conf = F.interpolate(depth_conf.unsqueeze(1), [prob_maps.shape[1], prob_maps.shape[2]],
+            #                                mode="nearest").squeeze(1)
+            # prob_maps += depth_conf
+            # valid_count += 1
             outputs.update(outputs_stage)
 
         outputs['refined_depth'] = outputs_stage['depth']
-        if valid_count > 0:
-            outputs['photometric_confidence'] = prob_maps / valid_count
+        # if valid_count > 0:
+        #     outputs['photometric_confidence'] = prob_maps / valid_count
 
         return outputs
